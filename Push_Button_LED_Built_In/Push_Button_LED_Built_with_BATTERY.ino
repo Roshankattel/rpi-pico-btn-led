@@ -1,4 +1,6 @@
 #include <Bounce2.h>
+#include <Pangodream_18650_CL.h>
+
 
 #define BUTTON_TIMEOUT 2000 // 2sec
 #define BATTEY_LIGHT_TIMEOUT 5000 //5sec
@@ -7,9 +9,9 @@
 #define MIN_BRIGHTNESS 0
 
 #define FLASH_SPEED 1000 //For Mode1 and Mode2
-#define FLASH_SPEED_MODE_3 500;
-#define FLASH_SPEED_MODE_4 500;
-#define FLASH_SPEED_MODE_5 200 
+#define FLASH_SPEED_MODE_3 250;
+#define FLASH_SPEED_MODE_4 250;
+#define FLASH_SPEED_MODE_5 100 
 
 #define READ_CHARGE_INTERVAL 10000 //10 sec
 
@@ -22,16 +24,16 @@
 #define BATTERY_PIN  29       // 29 in actual device
 #define ILLUMINATION_LED 21   // GPIO21 for flashing white LED on Main PCB
 
+#define CONV_FACTOR 0.1005
+#define READS 30
+
+Pangodream_18650_CL BL(BATTERY_PIN, CONV_FACTOR, READS);
+
+
 uint8_t illuminationLEDValue = 0;
 bool firstB2Hold = false;
 
 const int batteryLevelPins[] = { 4, 3, 2, 1 };  // BAT_L1 to BAT_L4 GPIO for battery level LEDs
-// Battery level thresholds (adjust based on actual readings)
-const float batteryFull = 1.85;
-const float battery75 = 1.80;
-const float battery50 = 1.78;
-const float battery25 = 1.75;
-const float battery10 = 1.70;
 uint64_t batteryStatStart = 0;
 uint8_t batteryFlash = 0;
 
@@ -54,9 +56,10 @@ int speed;
 int i = 3; 
 
 void setup() {
-  // put your setup code here, to run once:
-  Serial1.begin(115200);
-  Serial1.println("Hello, Raspberry Pi Pico!");
+    // Set the resolution for analog reads to 16 bits
+  analogReadResolution(16);
+  Serial.begin(115200);
+  Serial.println("Hello, Raspberry Pi Pico!");
 
   pinMode(WHITE_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
@@ -129,11 +132,11 @@ void loop() {
 
 void button1ShortPress()
 {
-  Serial1.println("Button-1 Short Press Triggred");
+  Serial.println("Button-1 Short Press Triggred");
   if (illuminationLEDValue == 0)
   {
     //Show battery level for 5 sec
-    Serial1.println("Show Battery for 5 sec!");
+    Serial.println("Show Battery for 5 sec!");
     batteryStatStart = millis();
     showBatterylevel();
   }
@@ -143,14 +146,14 @@ void button1ShortPress()
       illuminationLEDValue = 255 / 3;
     else
       illuminationLEDValue = illuminationLEDValue + (255 / 3);
-    Serial1.println(illuminationLEDValue);
+    Serial.println(illuminationLEDValue);
     analogWrite(ILLUMINATION_LED, illuminationLEDValue);
   }
 }
 
 void button1LongPress()
 {
-  Serial1.println("Button-1 Long Press Triggred");
+  Serial.println("Button-1 Long Press Triggred");
   if (illuminationLEDValue == 0)
   {
     illuminationLEDValue = 255 / 3;
@@ -174,7 +177,7 @@ void button2ShortPress()
   flashMode = (flashMode + 1) % 6;
   if (flashMode == 0)
     flashMode = 1;
-  Serial1.println("Flash Mode:" + String(flashMode));
+  Serial.println("Flash Mode:" + String(flashMode));
   flashStart = millis();
   switch (flashMode)
   {
@@ -210,7 +213,7 @@ void button2LongPress()
     return;
   }
   firstB2Hold = false;
-  Serial1.println("Stopping all the blink process!");
+  Serial.println("Stopping all the blink process!");
   flashMode = 0 ;
   flashPin = 0;
   flashStart = 0;
@@ -280,9 +283,9 @@ void handleFlashMode()
 
 void showBatterylevel()
 {
-  float batteryVoltage = analogRead(BATTERY_PIN) * (3.3 / 1023.0);
-  Serial1.println("Battery Voltage: " + String(batteryVoltage));
-  if (batteryVoltage >= battery75)
+  float batteryLevel = BL.getBatteryChargeLevel();
+  Serial.println("Battery Voltage: " + String(BL.getBatteryVolts()));
+  if (batteryLevel >= 75)
   {
     batteryStatStart = millis();
     charging = false;
@@ -295,7 +298,7 @@ void showBatterylevel()
     toggleLed[3] = 0;
 
   }
-  else if (batteryVoltage >= battery50)
+  else if (batteryLevel >= 50)
   {
     digitalWrite(batteryLevelPins[0], LOW);
     digitalWrite(batteryLevelPins[1], HIGH);
@@ -306,7 +309,7 @@ void showBatterylevel()
     toggleLed[2] = 0;
     toggleLed[3] = 0;
   }
-  else if (batteryVoltage >= battery25)
+  else if (batteryLevel >= 25)
   {
     digitalWrite(batteryLevelPins[0], LOW);
     digitalWrite(batteryLevelPins[1], LOW);
@@ -317,7 +320,7 @@ void showBatterylevel()
     toggleLed[2] = 0;
     toggleLed[3] = 0;
   }
-  else if (batteryVoltage >= battery10)
+  else if (batteryLevel >= 10)
   {
     digitalWrite(batteryLevelPins[0], LOW);
     digitalWrite(batteryLevelPins[1], LOW);
@@ -328,7 +331,7 @@ void showBatterylevel()
     toggleLed[2] = batteryLevelPins[2];
     toggleLed[3] = 0;
   }
-  else if (batteryVoltage <= battery10)
+  else if (batteryLevel <= 10)
   {
     digitalWrite(batteryLevelPins[0], LOW);
     digitalWrite(batteryLevelPins[1], LOW);
@@ -373,7 +376,7 @@ void batteryReqHandle()
   }
   if  (millis() - batteryStatStart > BATTEY_LIGHT_TIMEOUT)
   {
-    Serial1.println("Turning off the battery Display");
+    Serial.println("Turning off the battery Display");
     for (int i = 0; i < 4; i++)
     {
       batteryFlash = 0;
@@ -387,17 +390,17 @@ void detectCharging()
 {
   if (millis() % READ_CHARGE_INTERVAL == 0 )
   {
-    uint16_t currCharge = analogRead(BATTERY_PIN);
-    Serial1.println(currCharge);
-    if (currCharge > prevCharge)
+    uint16_t currCharge = BL.getBatteryChargeLevel();
+    Serial.println("Battery:"+String(currCharge)+"%");
+    if (currCharge - prevCharge > 5)
     {
-      Serial1.println("Charging Detected");
+      Serial.println("Charging Detected");
       charging = true;
       showBatterylevel();
     }
-    else if (currCharge < prevCharge && charging)
+    else if ((currCharge - prevCharge <5) && charging)
     {
-      Serial1.println("Charger Removed!");
+      Serial.println("Charger Removed!");
       charging = false;
       for (int i = 0; i < 4; i++)
       {
