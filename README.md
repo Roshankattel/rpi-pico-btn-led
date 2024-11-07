@@ -11,7 +11,7 @@ You can view and interact with the simulation of this project on Wokwi:
 Click the link to open the simulation: [Wokwi Project Simulation](https://wokwi.com/projects/413318746799964161)
 
 ## Installation
-Instructions for setting up the project locally.
+Clone the Repo and open it using ArduinoIDE.
 
 ## Usage
 Press/Hold buttons to check the different programmed LED flash modes( Total - 5 modes).
